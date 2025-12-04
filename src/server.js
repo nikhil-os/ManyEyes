@@ -14,6 +14,8 @@ const app = express();
 app.use(cors());
 app.use(express.json());
 
+// Simple root route so Render shows something at '/'
+app.get("/", (_, res) => res.send("ManyEyes Backend Running"));
 app.get("/health", (_, res) => res.json({ ok: true }));
 app.use("/auth", authRoutes);
 app.use("/devices", devicesRoutes);
@@ -99,7 +101,8 @@ wss.on("connection", async (ws, req) => {
   });
 });
 
-const PORT = process.env.PORT || 4000;
+// On Render, process.env.PORT is provided; default to 10000 locally if not set
+const PORT = process.env.PORT || 10000;
 
 async function start() {
   await connectDB(process.env.MONGO_URI);
