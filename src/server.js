@@ -68,10 +68,24 @@ wss.on("connection", async (ws, req) => {
     const { type, toDeviceId } = msg;
     if (!Object.values(MessageTypes).includes(type)) return;
     // Relay targeted messages
-    if (toDeviceId && connections.has(toDeviceId)) {
+    if (toDeviceId) {
       const target = connections.get(toDeviceId);
-      if (target.readyState === target.OPEN) {
-        target.send(JSON.stringify({ ...msg, fromDeviceId: deviceId }));
+      if (target && target.readyState === target.OPEN) {
+        const payload = { ...msg, fromDeviceId: deviceId };
+        try {
+          target.send(JSON.stringify(payload));
+          console.log(
+            `[WS] Relay ${type} from=${deviceId} to=${toDeviceId} len=${
+              JSON.stringify(payload).length
+            }`
+          );
+        } catch (e) {
+          console.error(`[WS] Relay failed ${type} to=${toDeviceId}:`, e);
+        }
+      } else {
+        console.warn(
+          `[WS] No open socket for toDeviceId=${toDeviceId}; type=${type}`
+        );
       }
     }
     // Update status for stream start/stop
