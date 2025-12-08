@@ -8,7 +8,7 @@ import devicesRoutes from "./routes/devices.js";
 import { Device } from "./models/Device.js";
 import { decodeToken } from "./middleware/auth.js";
 import { MessageTypes, makeMessage } from "./utils/messages.js";
-import { WebSocketServer } from "ws";
+import { WebSocketServer, WebSocket } from "ws";
 
 const app = express();
 app.use(cors());
@@ -29,7 +29,7 @@ const connections = new Map();
 function broadcastToGroup(email, msgObj) {
   const raw = JSON.stringify(msgObj);
   for (const [deviceId, ws] of connections.entries()) {
-    if (ws.email === email && ws.readyState === ws.OPEN) {
+    if (ws.email === email && ws.readyState === WebSocket.OPEN) {
       ws.send(raw);
     }
   }
@@ -66,11 +66,16 @@ wss.on("connection", async (ws, req) => {
       return;
     }
     const { type, toDeviceId } = msg;
+    console.log(
+      `[WS] RX type=${type} from=${deviceId} to=${toDeviceId} bytes=${
+        typeof data === "string" ? data.length : Buffer.byteLength(data)
+      }`
+    );
     if (!Object.values(MessageTypes).includes(type)) return;
     // Relay targeted messages
     if (toDeviceId) {
       const target = connections.get(toDeviceId);
-      if (target && target.readyState === target.OPEN) {
+      if (target && target.readyState === WebSocket.OPEN) {
         const payload = { ...msg, fromDeviceId: deviceId };
         try {
           target.send(JSON.stringify(payload));
