@@ -23,7 +23,7 @@ app.use("/devices", devicesRoutes);
 const server = http.createServer(app);
 const wss = new WebSocketServer({ server, path: "/ws" });
 
-// deviceId -> ws
+// deviceId -> Set<ws>
 const connections = new Map();
 
 function broadcastToGroup(email, msgObj) {
@@ -46,7 +46,13 @@ wss.on("connection", async (ws, req) => {
   }
   ws.email = decoded.email;
   ws.deviceId = deviceId;
-  connections.set(deviceId, ws);
+  let set = connections.get(deviceId);
+  if (!set) {
+    set = new Set();
+    connections.set(deviceId, set);
+  }
+  set.add(ws);
+  console.log(`[WS] Connected deviceId=${deviceId}; sockets=${set.size}`);
   // Mark device online
   await Device.findOneAndUpdate(
     { deviceId },
@@ -74,22 +80,27 @@ wss.on("connection", async (ws, req) => {
     if (!Object.values(MessageTypes).includes(type)) return;
     // Relay targeted messages
     if (toDeviceId) {
-      const target = connections.get(toDeviceId);
-      if (target && target.readyState === WebSocket.OPEN) {
+      const targets = connections.get(toDeviceId);
+      if (targets && targets.size > 0) {
         const payload = { ...msg, fromDeviceId: deviceId };
-        try {
-          target.send(JSON.stringify(payload));
-          console.log(
-            `[WS] Relay ${type} from=${deviceId} to=${toDeviceId} len=${
-              JSON.stringify(payload).length
-            }`
-          );
-        } catch (e) {
-          console.error(`[WS] Relay failed ${type} to=${toDeviceId}:`, e);
+        const raw = JSON.stringify(payload);
+        let delivered = 0;
+        for (const sock of targets) {
+          if (sock.readyState === WebSocket.OPEN) {
+            try {
+              sock.send(raw);
+              delivered++;
+            } catch (e) {
+              console.error(`[WS] Relay send error to=${toDeviceId}:`, e);
+            }
+          }
         }
+        console.log(
+          `[WS] Relay ${type} from=${deviceId} to=${toDeviceId} len=${raw.length} copies=${delivered}`
+        );
       } else {
         console.warn(
-          `[WS] No open socket for toDeviceId=${toDeviceId}; type=${type}`
+          `[WS] No open sockets for toDeviceId=${toDeviceId}; type=${type}`
         );
       }
     }
@@ -107,7 +118,11 @@ wss.on("connection", async (ws, req) => {
   });
 
   ws.on("close", async () => {
-    connections.delete(deviceId);
+    const set = connections.get(deviceId);
+    if (set) {
+      set.delete(ws);
+      if (set.size === 0) connections.delete(deviceId);
+    }
     await Device.findOneAndUpdate(
       { deviceId },
       { isOnline: false, lastSeen: new Date() }
@@ -117,6 +132,11 @@ wss.on("connection", async (ws, req) => {
       deviceId,
       online: false,
     });
+    console.log(
+      `[WS] Disconnected deviceId=${deviceId}; remainingSockets=${
+        connections.get(deviceId)?.size || 0
+      }`
+    );
   });
 });
 
