@@ -5,6 +5,7 @@ export const MessageTypes = {
   ICE: "ICE",
   SWITCH_CAMERA: "SWITCH_CAMERA",
   STOP_STREAM: "STOP_STREAM",
+  DISCONNECT: "DISCONNECT",
   PRESENCE: "PRESENCE",
 };
 
